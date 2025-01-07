@@ -54,6 +54,8 @@ async function run() {
             res.send(result);
         })
 
+        
+
         // booking data read in backend server
 
         app.get('/bookings', async (req, res) => {
@@ -66,8 +68,7 @@ async function run() {
             res.send(result);
         })
 
-
-        // data add in the backend server
+        // data add in the mongodb
         // add individual booking each time 
 
         app.post('/bookings', async (req, res) => {
@@ -76,6 +77,40 @@ async function run() {
             res.send(result);
         });
 
+        // update a booking (document) from MongoDB
+        // Put is creating or updating full doc, patch is only updating partial portion of a document. Below are given both the examples. 
+
+        // app.put('/bookings/:id',async (req,res)=>{
+        //     // express json jehetu dea ase, body req korle full updated data eksathe paoa jabe
+        //     const updatedBooking = req.body;
+        // })
+
+
+        // ei case e jehetu amra only confirm status or single ekta portion update korbo. ekhetre Put na must be patch hobe 
+
+        app.patch('/bookings/:id', async(req,res)=>{
+            const id = req.params.id;
+            const filter = {_id:new ObjectId(id)};
+            const updatedBooking = req.body;
+            console.log(updatedBooking);
+            const updateDoc = {
+                $set: {
+                  status: updatedBooking.status
+                },
+              };
+              const result = await bookingCollection.updateOne(filter,updateDoc);
+              res.send(result);
+        })
+
+
+        // delete a booking (document) from mongodb
+
+        app.delete('/bookings/:id',async (req,res)=>{
+            const id = req.params.id;
+            const query={_id: new ObjectId(id)}
+            const result = await bookingCollection.deleteOne(query);
+            res.send(result);
+        })
 
 
         // Send a ping to confirm a successful connection
