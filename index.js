@@ -13,7 +13,11 @@ const port = process.env.PORT || 5000;
 
 app.use(express.json());
 app.use(cors({
-    origin: ['http://localhost:5173'], //Deveopment er jonno local host. Production e gele production er link die etake replace kore dite hobe. 
+    origin: [
+        'https://cars-doctor-5e8a8.web.app',
+        'https://cars-doctor-5e8a8.firebaseapp.com'
+        // 'http://localhost:5173', //Deveopment er jonno local host. Production e gele production er link die etake replace kore dite hobe. 
+    ],
     credentials: true // Normally cookies same domain e kj kore. etake cross origin server e kaj koranor jonno credentials true kora hoyeche. 
 }));
 app.use(cookieParser());
@@ -21,29 +25,32 @@ app.use(cookieParser());
 
 // own middleware
 
+// jehetu ei middleware get, post, delete er majhe bose eitate next use kora hoy jeno next operation e chole jay. middle ware, api & handler er majhe bose always. 
 const logger = async (req, res, next) => {
-    console.log('called', req.hostname, req.originalUrl)
+    console.log('log: info', req.method, req.url);
+    // console.log('called', req.hostname, req.originalUrl)
     next();
 }
 
 const verifyToken = async (req, res, next) => {
-    const token = req.cookies?.token;
-    console.log('value of token in middleware', token);
-    // token na thakle error return asbe
+    const token = req?.cookies?.token;
+    console.log('token in the middleware', token);
+    // token na thakle error return asbe. no token available
     if (!token) {
         return res.status(401).send({ message: 'authorized access' });
     }
     // token thakle below steps e verify korbo
     jwt.verify(token, process.env.ACCEESS_TOKEN_SECRET, (err, decoded) => {
-        // token paisi but token expired or nosto . any type of token error.
+        //     // token paisi but token expired or nosto . any type of token error.
         if (err) {
             console.log(err);
             return res.status(401).send({ message: 'unauthorized access' })
         }
-        // if token is valid it will be decoded
+        //     // if token is valid it will be decoded. docode refers that token take decode kore user er against e verify kora hobe.
         console.log('value in the token', decoded)
         req.user = decoded;
-        next(); //we will use next() only when decoded is successfull. tai eita verify function er vitore decode er pore use hoise. jodi eita verify function er pore bosto tahole err hok ba success jai hok, next e chole jeto.. jeta amra chai na
+        next();
+        //**we will use next() only when decoded is successfull. tai eita verify function er vitore decode er pore use hoise. jodi eita verify function er pore bosto tahole err hok ba success jai hok, next e chole jeto.. jeta amra chai na**
     })
 
 }
@@ -63,7 +70,7 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
 
         const serviceCollection = client.db('CarDoctor').collection('services');
         const bookingCollection = client.db('CarDoctor').collection('bookings');
@@ -76,7 +83,7 @@ async function run() {
 
         // all services data read in backend server
 
-        app.get('/services', logger, async (req, res) => {
+        app.get('/services', async (req, res) => {
             const cursor = serviceCollection.find();
             const result = await cursor.toArray();
             res.send(result);
@@ -119,10 +126,13 @@ async function run() {
 
         app.get('/bookings', logger, verifyToken, async (req, res) => {
             console.log(req.query.email);
+            // console.log('token owner info',req.cookies);
             // console.log('tok tok token',req.cookies.token)
-            console.log('user in the valid token', req.user)
+            console.log('token owner info', req.user)
+            // ekhane req.user er majhe token user er email ache. jodi token user er email & je token request korche tader email match kore only then amra token verify korbo. naile verify kora hoibena. ekhane req.user.email holo token owner & req.query.email holo jar data call kore api request korechi tar email. 
+        
             if (req.query.email !== req.user.email) {
-                return res.status(403).send({message:'forbidden access'})
+                return res.status(403).send({ message: 'forbidden access' });
             }
 
             let query = {};
@@ -135,27 +145,40 @@ async function run() {
 
         // data add in the mongodb
 
-        // Auth related data create on the backend server from client side on jwt route
+        // Auth related data create on the backend server from client side on jwt route. auth related api
 
         app.post('/jwt', logger, async (req, res) => {
             // jwt route er body te ja ache seta request korbo
             const user = req.body;
             // user is used as a payload here 
-            console.log(user);
+            console.log('user for token', user);
             // generate a token jwt.sign(object, token secret, expiration time)
             const token = jwt.sign(user, process.env.ACCEESS_TOKEN_SECRET, { expiresIn: '5hr' })
+            // response hisebe normally token amra client side login/authprovider e send korte pari. But amra eivabe na kore jinista cookie format e send korbo. 
 
             res
                 .cookie('token', token, {
                     httpOnly: true,
-                    secure: false, // http://localhost:5173/login
+                    secure: true, // http://localhost:5173/login (production e true thake)
+                    sameSite: 'none'
                 })
+                .send({ success: true });
+        })
+
+        // need to remove token during logOut
+        app.post('/logout', async (req, res) => {
+            const user = req.body;
+            console.log('logging out', user);
+            res
+                .clearCookie('token',
+                    { maxAge: 0 }
+                )
                 .send({ success: true });
         })
 
         // add individual booking each time 
 
-        app.post('/bookings', logger, async (req, res) => {
+        app.post('/bookings', async (req, res) => {
             const booking = req.body;
             const result = await bookingCollection.insertOne(booking);
             res.send(result);
@@ -198,7 +221,7 @@ async function run() {
 
 
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
